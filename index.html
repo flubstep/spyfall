@@ -1,0 +1,268 @@
+<html>
+<head>
+	<title>Spyfall</title>
+	<meta name="viewport" width='device-width, initial-scale=1'>
+	<script src="https://cdn.firebase.com/js/client/2.2.7/firebase.js"></script>
+	<script src="https://cdnjs.cloudflare.com/ajax/libs/lodash.js/3.10.0/lodash.min.js"></script>
+	<script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.0.0-alpha1/jquery.min.js"></script>
+</head>
+<body>
+<style>
+
+#container {
+	font-size: 20px;
+	max-width: 480px;
+	margin: 0 auto;
+	font-family: Avenir;
+}
+
+#name-input {
+	padding: 10px 10px;
+	font-size: 20px;
+}
+
+.item-container {
+	display: block;
+	padding-top: 10px;
+	overflow: auto;
+}
+
+.item {
+	width: 40%;
+	float: left;
+	padding: 5px;
+}
+
+.item-inner {
+	border: 1px solid #999;
+	font-size: 16px;
+	padding: 5px;
+}
+
+h1 {
+	font-weight: lighter;
+	padding: 10px 0;
+	margin: 10px 0 0 0;
+}
+
+h2 {
+	margin: 20px 0 0 0;
+	font-size: 14px;
+	font-weight: bold;
+}
+
+h3 {
+	font-weight: lighter;
+	margin: 0;
+}
+
+button {
+	background: none;
+	border: 1px solid #333;
+	margin-top: 20px;
+	font-size: 20px;
+	padding: 10px 0;
+	width: 100%;
+}
+</style>
+
+	<div id="container">
+		<div class="screen" id="wait-screen" style="display:none;">
+			<h1>Another game is in progress.</h1>
+			<h1>Waiting for it to finish...</h1>
+			<button class="end-button button">End Game</button>
+		</div>
+		<div class="screen" id="join-screen" style="display:none;">
+			<h1 id="name-entry">Your Name:</h1>
+			<input id="name-input"></input>
+			<button class="join-button button">Join Game</buttom>
+		</div>
+		<div class="screen" id="joined-screen" style="display:none;">
+			<h1>Waiting for others...</h1>
+			<h2>Players</h2>
+			<div class="item-container" id="current-players"></div>
+			<button class="start-button button">Start Game</button>
+		</div>
+		<div class="screen" id="game-screen" style="display:none;">
+			<h1 id="your-role"></h1>
+			<h1 id="your-location"></h1>
+			<h3 id="starting-player"></h3>
+			<h2>Players</h2>
+			<div class="item-container" id="current-players-active"></div>
+			<h2>Location Reference</h2>
+			<div class="item-container" id="all-locations"></div>
+			<button class="end-button button">End Game</button>
+		</div>
+	</div>
+
+<script>
+
+	$(document).ready(function() {
+
+		window.clientId = "player" + _.random(100000000).toString();
+		window.clientName = null;
+		window.firebaseRef = new Firebase('https://spyfall.firebaseio.com/');
+		var allLocations = [
+			"Airplane",
+			"Bank",
+			"Beach",
+			"Broadway Theater",
+			"Casino",
+			"Cathedral",
+			"Circus Tent",
+			"Corporate Party",
+			"Crusader Army",
+			"Day Spa",
+			"Embassy",
+			"Hospital",
+			"Hotel",
+			"Military Base",
+			"Movie Studio",
+			"Ocean Liner",
+			"Passenger Train",
+			"Pirate Ship",
+			"Polar Station",
+			"Police Station",
+			"Restaurant",
+			"School",
+			"Service Station",
+			"Space Station",
+			"Submarine",
+			"Supermarket",
+			"University"
+		];
+
+		firebaseRef.on('value', function(update) {
+			var value = update.val();
+			if (value) {
+				var players = value.players || {};
+				var gameState = value.gameState || {};
+			} else {
+				var players = {};
+				var gameState = { started: false };
+			}
+
+			if (gameState.started && players[clientId]) {
+				displayGameScreen(players, gameState);
+			} else if (gameState.started && !players[clientId]) {
+				displayWaitScreen(players, gameState);
+			} else if (!gameState.started && players[clientId]){
+				displayJoinedScreen(players, gameState);
+			} else {
+				displayJoinScreen(players, gameState);
+			}
+		});
+
+		var onJoin = function() {
+			firebaseRef.transaction(function(currentValue) {
+				if (!currentValue) { currentValue = {}; }
+				if (!currentValue.players) { currentValue.players = {}; }
+				var gameState = currentValue.gameState || {};
+
+				if (gameState.started) {
+					return currentValue;
+				} else {
+					var clientName = $('#name-input').val();
+					currentValue.players[clientId] = { name: clientName };
+					return currentValue;
+				}
+			});
+		}
+
+		var onStart = function() {
+			firebaseRef.transaction(function(currentValue) {
+				if (!currentValue) { currentValue = {}; }
+				var gameState = currentValue.gameState || {};
+				var players = currentValue.players || {};
+
+				if (gameState.started) {
+					return currentValue;
+				} else {
+					nextValue = {
+						gameState: {},
+						players: {}
+					}
+					var playerIds = _.keys(players);
+					nextValue.gameState.started = true;
+					nextValue.gameState.location = getRandomLocation();
+					nextValue.gameState.spy = playerIds[_.random(0, playerIds.length-1)];
+					var startingPlayerId = playerIds[_.random(0, playerIds.length-1)];
+					var startingPlayerName = players[startingPlayerId].name;
+					nextValue.gameState.startingPlayerName = startingPlayerName;
+					nextValue.players = players;
+					return nextValue;
+				}
+			});
+		}
+
+		var onEnd = function() {
+			firebaseRef.transaction(function(currentValue) {
+				if (!currentValue) { currentValue = {}; }
+				var gameState = currentValue.gameState || {};
+				var players = currentValue.players || {};
+
+				if (!gameState.started) {
+					return currentValue;
+				} else {
+					currentValue.players = {};
+					currentValue.gameState = { started: false };
+					return currentValue;
+				}
+			});
+		}
+
+		var getRandomLocation = function() {
+			return allLocations[_.random(0, allLocations.length-1)];
+		}
+
+		var displayWaitScreen = function(players, gameState) {
+			$('.screen').hide();
+			$('#wait-screen').show();
+		}
+
+		var displayJoinedScreen = function(players, gameState) {
+			$('.screen').hide();
+			displayCurrentPlayers(players, '#current-players');
+			$('#joined-screen').show();
+		}
+
+		var displayJoinScreen = function(players, gameState) {
+			$('.screen').hide();
+			$('#join-screen').show();
+		}
+
+		var displayGameScreen = function(players, gameState) {
+			$('.screen').hide();
+			if (gameState.spy != clientId) {
+				$('#your-location').text('Your location is: ' + gameState.location);
+			} else {
+				$('#your-location').text('You are the spy!')
+			}
+			$('#starting-player').text('The starting player is ' + gameState.startingPlayerName);
+			$('#current-players-active').empty();
+			$('#all-locations').empty();
+			displayCurrentPlayers(players, '#current-players-active');
+			_.map(allLocations, function(location) {
+				var locationDiv = $('<div class="item"><div class="item-inner location">' + location + '</div></div>');
+				$('#all-locations').append(locationDiv);
+			});
+			$('#game-screen').show();
+		}
+
+		var displayCurrentPlayers = function(players, container) {
+			$(container).empty();
+			var playerNames = _.values(players);
+			_.map(playerNames, function(playerName) {
+				var playerDiv = $('<div class="item"><div class="item-inner player">' + playerName.name + '</div></div>');
+				$(container).append(playerDiv);
+			});
+		}
+
+		$('.start-button').click(onStart);
+		$('.join-button').click(onJoin);
+		$('.end-button').click(onEnd);
+	});
+
+</script>
+</body>
+</html>
