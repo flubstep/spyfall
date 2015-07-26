@@ -17,12 +17,6 @@
 	font-family: Avenir;
 }
 
-#name-input {
-	padding: 10px 10px;
-	font-size: 20px;
-	width: 100%;
-}
-
 .item-container {
 	display: block;
 	padding-top: 10px;
@@ -39,6 +33,12 @@
 	border: 1px solid #999;
 	font-size: 16px;
 	padding: 5px;
+}
+
+input {
+	padding: 10px 10px;
+	font-size: 20px;
+	width: 100%;
 }
 
 h1 {
@@ -69,6 +69,11 @@ button {
 </style>
 
 	<div id="container">
+		<div class="screen" id="init-screen" style="display:none;">
+			<h1 id="name-entry">Enter a room ID:</h1>
+			<input id="room-input"></input>
+			<button class="init-button button">Join Room</buttom>
+		</div>
 		<div class="screen" id="wait-screen" style="display:none;">
 			<h1>Another game is in progress.</h1>
 			<h1>Waiting for it to finish...</h1>
@@ -103,7 +108,6 @@ button {
 
 		window.clientId = "player" + _.random(100000000).toString();
 		window.clientName = null;
-		window.firebaseRef = new Firebase('https://spyfall.firebaseio.com/');
 		var allLocations = [
 			"Airplane",
 			"Bank",
@@ -134,26 +138,47 @@ button {
 			"University"
 		];
 
-		firebaseRef.on('value', function(update) {
-			var value = update.val();
-			if (value) {
-				var players = value.players || {};
-				var gameState = value.gameState || {};
-			} else {
-				var players = {};
-				var gameState = { started: false };
-			}
 
-			if (gameState.started && players[clientId]) {
-				displayGameScreen(players, gameState);
-			} else if (gameState.started && !players[clientId]) {
-				displayWaitScreen(players, gameState);
-			} else if (!gameState.started && players[clientId]){
-				displayJoinedScreen(players, gameState);
-			} else {
-				displayJoinScreen(players, gameState);
-			}
-		});
+		var paths = _.filter(document.location.pathname.split('/'));
+		if (paths.length > 0) {
+			var gameId = paths[paths.length-1];
+		} else {
+			var gameId = null;
+		}
+		if (gameId === "spyfall") {
+			gameId = null;
+		}
+
+		if (gameId) {
+			window.firebaseRef = new Firebase('https://spyfall.firebaseio.com/').child(gameId);
+			firebaseRef.on('value', function(update) {
+				var value = update.val();
+				if (value) {
+					var players = value.players || {};
+					var gameState = value.gameState || {};
+				} else {
+					var players = {};
+					var gameState = { started: false };
+				}
+
+				if (gameState.started && players[clientId]) {
+					displayGameScreen(players, gameState);
+				} else if (gameState.started && !players[clientId]) {
+					displayWaitScreen(players, gameState);
+				} else if (!gameState.started && players[clientId]){
+					displayJoinedScreen(players, gameState);
+				} else {
+					displayJoinScreen(players, gameState);
+				}
+			});
+		} else {
+			$('#init-screen').show();
+		}
+
+		var onInit = function() {
+			var roomId = $('#room-input').val();
+			document.location.pathname += roomId;
+		}
 
 		var onJoin = function() {
 			firebaseRef.transaction(function(currentValue) {
@@ -165,7 +190,9 @@ button {
 					return currentValue;
 				} else {
 					var clientName = $('#name-input').val();
-					currentValue.players[clientId] = { name: clientName };
+					if (clientName) {
+						currentValue.players[clientId] = { name: clientName };
+					}
 					return currentValue;
 				}
 			});
@@ -260,6 +287,7 @@ button {
 			});
 		}
 
+		$('.init-button').click(onInit);
 		$('.start-button').click(onStart);
 		$('.join-button').click(onJoin);
 		$('.end-button').click(onEnd);
