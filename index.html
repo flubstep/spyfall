@@ -176,7 +176,7 @@ button {
 		}
 
 		var onInit = function() {
-			var roomId = $('#room-input').val();
+			var roomId = $('#room-input').val().trim().toLowerCase();
 			document.location.pathname += roomId;
 		}
 
